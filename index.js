@@ -16,7 +16,9 @@ const REDIS_URL = isDevelopment
   : "redis://h:p5d1fdd9b0086f39b74adf6a2388ad4d17eccb07429ba8f98c79422e002add703@ec2-35-168-215-149.compute-1.amazonaws.com:19079";
 
 const DEFAULT_PORT = 3000;
-const ROOT_NODE_ADDRESS = `http://localhost:${DEFAULT_PORT}`;
+const ROOT_NODE_ADDRESS = isDevelopment
+  ? `http://localhost:${DEFAULT_PORT}`
+  : "https://my-crypto-blockchain.herokuapp.com";
 
 const app = express();
 const blockchain = new Blockchain();
