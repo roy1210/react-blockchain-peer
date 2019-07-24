@@ -9,7 +9,7 @@ To deploy in Heroku as peered website to role as peered user. (P2P)
 
 ## Features
 
-Changed `ROOT_NODE_ADDRESS` to host website for production.
+Changed `ROOT_NODE_ADDRESS` to hosting website for production.
 
 
 index.js

@@ -40,6 +40,27 @@ class App extends Component {
           <h4>Wallet balance :</h4>
           <h5>{balance}</h5>
         </div>
+        <br />
+        <p>
+          Hey, this is peered website for{' '}
+          <a
+            href='https://my-crypto-blockchain.herokuapp.com/'
+            rel='noopener noreferrer'
+            target='_blank'
+          >
+            my-crypto-blockchain
+          </a>{' '}
+        </p>
+        <p>
+          ( Please open localhost://3000 if opening this page as development
+          mode in the local environment )
+        </p>
+        <p>
+          You can send dummy money and mining block to be able to see the added
+          block in this blockchain.{' '}
+        </p>
+        <p>This blockchain will reset when restarting the application. </p>
+        <br />
       </div>
     );
   }
