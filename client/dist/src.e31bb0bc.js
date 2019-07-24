@@ -5,8 +5,6 @@
 //
 // anything defined in a previous bundle is accessed via the
 // orig method which is the require for previous bundles
-
-// eslint-disable-next-line no-global-assign
 parcelRequire = (function (modules, cache, entry, globalName) {
   // Save the require from previous bundle to this closure if any
   var previousRequire = typeof parcelRequire === 'function' && parcelRequire;
@@ -77,8 +75,16 @@ parcelRequire = (function (modules, cache, entry, globalName) {
     }, {}];
   };
 
+  var error;
   for (var i = 0; i < entry.length; i++) {
-    newRequire(entry[i]);
+    try {
+      newRequire(entry[i]);
+    } catch (e) {
+      // Save first error but execute all entries
+      if (!error) {
+        error = e;
+      }
+    }
   }
 
   if (entry.length) {
@@ -103,6 +109,13 @@ parcelRequire = (function (modules, cache, entry, globalName) {
   }
 
   // Override the current require with this new one
+  parcelRequire = newRequire;
+
+  if (error) {
+    // throw error from earlier, _after updating parcelRequire_
+    throw error;
+  }
+
   return newRequire;
 })({"../../node_modules/object-assign/index.js":[function(require,module,exports) {
 /*
@@ -311,7 +324,7 @@ checkPropTypes.resetWarningCache = function () {
 
 module.exports = checkPropTypes;
 },{"./lib/ReactPropTypesSecret":"../../node_modules/prop-types/lib/ReactPropTypesSecret.js"}],"../../node_modules/react/cjs/react.development.js":[function(require,module,exports) {
-/** @license React v16.8.5
+/** @license React v16.8.6
  * react.development.js
  *
  * Copyright (c) Facebook, Inc. and its affiliates.
@@ -330,7 +343,7 @@ if ("development" !== "production") {
     var checkPropTypes = require('prop-types/checkPropTypes'); // TODO: this is special because it gets imported during build.
 
 
-    var ReactVersion = '16.8.5'; // The Symbol used to tag the ReactElement-like types. If there is no native Symbol
+    var ReactVersion = '16.8.6'; // The Symbol used to tag the ReactElement-like types. If there is no native Symbol
     // nor polyfill, then a plain number is used for performance.
 
     var hasSymbol = typeof Symbol === 'function' && Symbol.for;
@@ -2242,7 +2255,7 @@ if ("development" === 'production') {
 }
 },{"./cjs/react.development.js":"../../node_modules/react/cjs/react.development.js"}],"../../node_modules/scheduler/cjs/scheduler.development.js":[function(require,module,exports) {
 var global = arguments[3];
-/** @license React v0.13.5
+/** @license React v0.13.6
  * scheduler.development.js
  *
  * Copyright (c) Facebook, Inc. and its affiliates.
@@ -2962,7 +2975,7 @@ if ("development" === 'production') {
   module.exports = require('./cjs/scheduler.development.js');
 }
 },{"./cjs/scheduler.development.js":"../../node_modules/scheduler/cjs/scheduler.development.js"}],"../../node_modules/scheduler/cjs/scheduler-tracing.development.js":[function(require,module,exports) {
-/** @license React v0.13.5
+/** @license React v0.13.6
  * scheduler-tracing.development.js
  *
  * Copyright (c) Facebook, Inc. and its affiliates.
@@ -3358,7 +3371,7 @@ if ("development" === 'production') {
   module.exports = require('./cjs/scheduler-tracing.development.js');
 }
 },{"./cjs/scheduler-tracing.development.js":"../../node_modules/scheduler/cjs/scheduler-tracing.development.js"}],"../../node_modules/react-dom/cjs/react-dom.development.js":[function(require,module,exports) {
-/** @license React v16.8.5
+/** @license React v16.8.6
  * react-dom.development.js
  *
  * Copyright (c) Facebook, Inc. and its affiliates.
@@ -8922,16 +8935,29 @@ if ("development" !== "production") {
       return node && node.ownerDocument && containsNode(node.ownerDocument.documentElement, node);
     }
 
+    function isSameOriginFrame(iframe) {
+      try {
+        // Accessing the contentDocument of a HTMLIframeElement can cause the browser
+        // to throw, e.g. if it has a cross-origin src attribute.
+        // Safari will show an error in the console when the access results in "Blocked a frame with origin". e.g:
+        // iframe.contentDocument.defaultView;
+        // A safety way is to access one of the cross origin properties: Window or Location
+        // Which might result in "SecurityError" DOM Exception and it is compatible to Safari.
+        // https://html.spec.whatwg.org/multipage/browsers.html#integration-with-idl
+        return typeof iframe.contentWindow.location.href === 'string';
+      } catch (err) {
+        return false;
+      }
+    }
+
     function getActiveElementDeep() {
       var win = window;
       var element = getActiveElement();
 
       while (element instanceof win.HTMLIFrameElement) {
-        // Accessing the contentDocument of a HTMLIframeElement can cause the browser
-        // to throw, e.g. if it has a cross-origin src attribute
-        try {
-          win = element.contentDocument.defaultView;
-        } catch (e) {
+        if (isSameOriginFrame(element)) {
+          win = element.contentWindow;
+        } else {
           return element;
         }
 
@@ -15088,14 +15114,34 @@ if ("development" !== "production") {
       var unmaskedContext = emptyContextObject;
       var context = null;
       var contextType = ctor.contextType;
+      {
+        if ('contextType' in ctor) {
+          var isValid = // Allow null for conditional declaration
+          contextType === null || contextType !== undefined && contextType.$$typeof === REACT_CONTEXT_TYPE && contextType._context === undefined; // Not a <Context.Consumer>
 
-      if (typeof contextType === 'object' && contextType !== null) {
-        {
-          if (contextType.$$typeof !== REACT_CONTEXT_TYPE && !didWarnAboutInvalidateContextType.has(ctor)) {
+          if (!isValid && !didWarnAboutInvalidateContextType.has(ctor)) {
             didWarnAboutInvalidateContextType.add(ctor);
-            warningWithoutStack$1(false, '%s defines an invalid contextType. ' + 'contextType should point to the Context object returned by React.createContext(). ' + 'Did you accidentally pass the Context.Provider instead?', getComponentName(ctor) || 'Component');
+            var addendum = '';
+
+            if (contextType === undefined) {
+              addendum = ' However, it is set to undefined. ' + 'This can be caused by a typo or by mixing up named and default imports. ' + 'This can also happen due to a circular dependency, so ' + 'try moving the createContext() call to a separate file.';
+            } else if (typeof contextType !== 'object') {
+              addendum = ' However, it is set to a ' + typeof contextType + '.';
+            } else if (contextType.$$typeof === REACT_PROVIDER_TYPE) {
+              addendum = ' Did you accidentally pass the Context.Provider instead?';
+            } else if (contextType._context !== undefined) {
+              // <Context.Consumer>
+              addendum = ' Did you accidentally pass the Context.Consumer instead?';
+            } else {
+              addendum = ' However, it is set to an object with keys {' + Object.keys(contextType).join(', ') + '}.';
+            }
+
+            warningWithoutStack$1(false, '%s defines an invalid contextType. ' + 'contextType should point to the Context object returned by React.createContext().%s', getComponentName(ctor) || 'Component', addendum);
           }
         }
+      }
+
+      if (typeof contextType === 'object' && contextType !== null) {
         context = readContext(contextType);
       } else {
         unmaskedContext = getUnmaskedContext(workInProgress, ctor, true);
@@ -16952,8 +16998,8 @@ if ("development" !== "production") {
       var queue = hook.queue = {
         last: null,
         dispatch: null,
-        eagerReducer: reducer,
-        eagerState: initialState
+        lastRenderedReducer: reducer,
+        lastRenderedState: initialState
       };
       var dispatch = queue.dispatch = dispatchAction.bind(null, // Flow doesn't know this is non-null, but we do.
       currentlyRenderingFiber$1, queue);
@@ -16964,6 +17010,7 @@ if ("development" !== "production") {
       var hook = updateWorkInProgressHook();
       var queue = hook.queue;
       !(queue !== null) ? invariant(false, 'Should have a queue. This is likely a bug in React. Please file an issue.') : void 0;
+      queue.lastRenderedReducer = reducer;
 
       if (numberOfReRenders > 0) {
         // This is a re-render. Apply the new render phase updates to the previous
@@ -17002,8 +17049,7 @@ if ("development" !== "production") {
               hook.baseState = newState;
             }
 
-            queue.eagerReducer = reducer;
-            queue.eagerState = newState;
+            queue.lastRenderedState = newState;
             return [newState, _dispatch];
           }
         }
@@ -17087,8 +17133,7 @@ if ("development" !== "production") {
         hook.memoizedState = _newState;
         hook.baseUpdate = newBaseUpdate;
         hook.baseState = newBaseState;
-        queue.eagerReducer = reducer;
-        queue.eagerState = _newState;
+        queue.lastRenderedState = _newState;
       }
 
       var dispatch = queue.dispatch;
@@ -17106,8 +17151,8 @@ if ("development" !== "production") {
       var queue = hook.queue = {
         last: null,
         dispatch: null,
-        eagerReducer: basicStateReducer,
-        eagerState: initialState
+        lastRenderedReducer: basicStateReducer,
+        lastRenderedState: initialState
       };
       var dispatch = queue.dispatch = dispatchAction.bind(null, // Flow doesn't know this is non-null, but we do.
       currentlyRenderingFiber$1, queue);
@@ -17401,9 +17446,9 @@ if ("development" !== "production") {
           // The queue is currently empty, which means we can eagerly compute the
           // next state before entering the render phase. If the new state is the
           // same as the current state, we may be able to bail out entirely.
-          var _eagerReducer = queue.eagerReducer;
+          var _lastRenderedReducer = queue.lastRenderedReducer;
 
-          if (_eagerReducer !== null) {
+          if (_lastRenderedReducer !== null) {
             var prevDispatcher = void 0;
             {
               prevDispatcher = ReactCurrentDispatcher$1.current;
@@ -17411,15 +17456,15 @@ if ("development" !== "production") {
             }
 
             try {
-              var currentState = queue.eagerState;
+              var currentState = queue.lastRenderedState;
 
-              var _eagerState = _eagerReducer(currentState, action); // Stash the eagerly computed state, and the reducer used to compute
+              var _eagerState = _lastRenderedReducer(currentState, action); // Stash the eagerly computed state, and the reducer used to compute
               // it, on the update object. If the reducer hasn't changed by the
               // time we enter the render phase, then the eager state can be used
               // without calling the reducer again.
 
 
-              _update2.eagerReducer = _eagerReducer;
+              _update2.eagerReducer = _lastRenderedReducer;
               _update2.eagerState = _eagerState;
 
               if (is(_eagerState, currentState)) {
@@ -25125,7 +25170,7 @@ if ("development" !== "production") {
     } // TODO: this is special because it gets imported during build.
 
 
-    var ReactVersion = '16.8.5'; // TODO: This type is shared between the reconciler and ReactDOM, but will
+    var ReactVersion = '16.8.6'; // TODO: This type is shared between the reconciler and ReactDOM, but will
     // eventually be lifted out to the renderer.
 
     var ReactCurrentOwner = ReactSharedInternals.ReactCurrentOwner;
@@ -25768,7 +25813,7 @@ if (__DEV__) {
 
 module.exports = warning;
 },{}],"../../node_modules/react-is/cjs/react-is.development.js":[function(require,module,exports) {
-/** @license React v16.8.5
+/** @license React v16.8.6
  * react-is.development.js
  *
  * Copyright (c) Facebook, Inc. and its affiliates.
@@ -28531,7 +28576,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 // Written in this round about way for babel-transform-imports
 var _default = _MemoryRouter.default;
 exports.default = _default;
-},{"react-router/es/MemoryRouter":"../../node_modules/react-router/es/MemoryRouter.js"}],"../../node_modules/react-router/node_modules/isarray/index.js":[function(require,module,exports) {
+},{"react-router/es/MemoryRouter":"../../node_modules/react-router/es/MemoryRouter.js"}],"../../node_modules/isarray/index.js":[function(require,module,exports) {
 module.exports = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
@@ -28964,7 +29009,7 @@ function pathToRegexp (path, keys, options) {
   return stringToRegexp(/** @type {string} */ (path), /** @type {!Array} */ (keys), options)
 }
 
-},{"isarray":"../../node_modules/react-router/node_modules/isarray/index.js"}],"../../node_modules/react-router/es/matchPath.js":[function(require,module,exports) {
+},{"isarray":"../../node_modules/isarray/index.js"}],"../../node_modules/react-router/es/matchPath.js":[function(require,module,exports) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -31359,8 +31404,8 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 var _default = (0, _createBrowserHistory.default)();
 
 exports.default = _default;
-},{"history/createBrowserHistory":"../../node_modules/history/createBrowserHistory.js"}],"assets/logo.png":[function(require,module,exports) {
-module.exports = "/logo.e9a9c890.png";
+},{"history/createBrowserHistory":"../../node_modules/history/createBrowserHistory.js"}],"assets/blockchainLogo.png":[function(require,module,exports) {
+module.exports = "/blockchainLogo.4c07a405.png";
 },{}],"components/App.js":[function(require,module,exports) {
 "use strict";
 
@@ -31373,7 +31418,7 @@ var _react = _interopRequireWildcard(require("react"));
 
 var _reactRouterDom = require("react-router-dom");
 
-var _logo = _interopRequireDefault(require("../assets/logo.png"));
+var _blockchainLogo = _interopRequireDefault(require("../assets/blockchainLogo.png"));
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
@@ -31446,8 +31491,8 @@ function (_Component) {
         className: "App"
       }, _react.default.createElement("img", {
         className: "logo",
-        src: _logo.default
-      }), _react.default.createElement("br", null), _react.default.createElement("div", null, "Welcome to the Blockchain..."), _react.default.createElement("br", null), _react.default.createElement("div", null, _react.default.createElement(_reactRouterDom.Link, {
+        src: _blockchainLogo.default
+      }), _react.default.createElement("br", null), _react.default.createElement("div", null, "Welcome to the Blockchain"), _react.default.createElement("br", null), _react.default.createElement("div", null, _react.default.createElement(_reactRouterDom.Link, {
         to: "/blocks"
       }, "Blocks")), _react.default.createElement("div", null, _react.default.createElement(_reactRouterDom.Link, {
         to: "/conduct-transaction"
@@ -31455,7 +31500,7 @@ function (_Component) {
         to: "/transaction-pool"
       }, "Transaction-pool")), _react.default.createElement("div", {
         className: "WalletInfo"
-      }, _react.default.createElement("div", null, "Address: ", address), _react.default.createElement("div", null, "Balance: ", balance)));
+      }, _react.default.createElement("h4", null, "Wallet address :"), _react.default.createElement("h5", null, address), _react.default.createElement("h4", null, "Wallet balance :"), _react.default.createElement("h5", null, balance)));
     }
   }]);
 
@@ -31464,7 +31509,7 @@ function (_Component) {
 
 var _default = App;
 exports.default = _default;
-},{"react":"../../node_modules/react/index.js","react-router-dom":"../../node_modules/react-router-dom/es/index.js","../assets/logo.png":"assets/logo.png"}],"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_global.js":[function(require,module,exports) {
+},{"react":"../../node_modules/react/index.js","react-router-dom":"../../node_modules/react-router-dom/es/index.js","../assets/blockchainLogo.png":"assets/blockchainLogo.png"}],"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_global.js":[function(require,module,exports) {
 
 // https://github.com/zloirock/core-js/issues/86#issuecomment-115759028
 var global = module.exports = typeof window != 'undefined' && window.Math == Math
@@ -31474,7 +31519,7 @@ var global = module.exports = typeof window != 'undefined' && window.Math == Mat
 if (typeof __g == 'number') __g = global; // eslint-disable-line no-undef
 
 },{}],"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_core.js":[function(require,module,exports) {
-var core = module.exports = { version: '2.6.5' };
+var core = module.exports = { version: '2.6.9' };
 if (typeof __e == 'number') __e = core; // eslint-disable-line no-undef
 
 },{}],"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_a-function.js":[function(require,module,exports) {
@@ -31831,6 +31876,7 @@ module.exports = function (it) {
 },{"./_defined":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_defined.js"}],"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-assign.js":[function(require,module,exports) {
 'use strict';
 // 19.1.2.1 Object.assign(target, source, ...)
+var DESCRIPTORS = require('./_descriptors');
 var getKeys = require('./_object-keys');
 var gOPS = require('./_object-gops');
 var pIE = require('./_object-pie');
@@ -31860,11 +31906,14 @@ module.exports = !$assign || require('./_fails')(function () {
     var length = keys.length;
     var j = 0;
     var key;
-    while (length > j) if (isEnum.call(S, key = keys[j++])) T[key] = S[key];
+    while (length > j) {
+      key = keys[j++];
+      if (!DESCRIPTORS || isEnum.call(S, key)) T[key] = S[key];
+    }
   } return T;
 } : $assign;
 
-},{"./_object-keys":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-keys.js","./_object-gops":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-gops.js","./_object-pie":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-pie.js","./_to-object":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_to-object.js","./_iobject":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_iobject.js","./_fails":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_fails.js"}],"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/es6.object.assign.js":[function(require,module,exports) {
+},{"./_descriptors":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_descriptors.js","./_object-keys":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-keys.js","./_object-gops":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-gops.js","./_object-pie":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-pie.js","./_to-object":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_to-object.js","./_iobject":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_iobject.js","./_fails":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_fails.js"}],"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/es6.object.assign.js":[function(require,module,exports) {
 // 19.1.3.1 Object.assign(target, source)
 var $export = require('./_export');
 
@@ -32383,6 +32432,7 @@ function uncontrollable(Component, controlledValues, methods) {
 
 module.exports = exports["default"];
 },{"react":"../../node_modules/react/index.js","invariant":"../../node_modules/invariant/browser.js","./utils":"../../node_modules/uncontrollable/utils.js"}],"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-to-array.js":[function(require,module,exports) {
+var DESCRIPTORS = require('./_descriptors');
 var getKeys = require('./_object-keys');
 var toIObject = require('./_to-iobject');
 var isEnum = require('./_object-pie').f;
@@ -32394,13 +32444,17 @@ module.exports = function (isEntries) {
     var i = 0;
     var result = [];
     var key;
-    while (length > i) if (isEnum.call(O, key = keys[i++])) {
-      result.push(isEntries ? [key, O[key]] : O[key]);
-    } return result;
+    while (length > i) {
+      key = keys[i++];
+      if (!DESCRIPTORS || isEnum.call(O, key)) {
+        result.push(isEntries ? [key, O[key]] : O[key]);
+      }
+    }
+    return result;
   };
 };
 
-},{"./_object-keys":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-keys.js","./_to-iobject":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_to-iobject.js","./_object-pie":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-pie.js"}],"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/es7.object.entries.js":[function(require,module,exports) {
+},{"./_descriptors":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_descriptors.js","./_object-keys":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-keys.js","./_to-iobject":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_to-iobject.js","./_object-pie":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_object-pie.js"}],"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/es7.object.entries.js":[function(require,module,exports) {
 // https://github.com/tc39/proposal-object-values-entries
 var $export = require('./_export');
 var $entries = require('./_object-to-array')(true);
@@ -35938,42 +35992,7 @@ module.exports = require('../modules/_core').parseInt;
 
 },{"../modules/es6.parse-int":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/es6.parse-int.js","../modules/_core":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/modules/_core.js"}],"../../node_modules/@babel/runtime-corejs2/core-js/parse-int.js":[function(require,module,exports) {
 module.exports = require("core-js/library/fn/parse-int");
-},{"core-js/library/fn/parse-int":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/fn/parse-int.js"}],"../../node_modules/@babel/runtime/helpers/esm/objectWithoutPropertiesLoose.js":[function(require,module,exports) {
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = _objectWithoutPropertiesLoose;
-
-function _objectWithoutPropertiesLoose(source, excluded) {
-  if (source == null) return {};
-  var target = {};
-  var sourceKeys = Object.keys(source);
-  var key, i;
-
-  for (i = 0; i < sourceKeys.length; i++) {
-    key = sourceKeys[i];
-    if (excluded.indexOf(key) >= 0) continue;
-    target[key] = source[key];
-  }
-
-  return target;
-}
-},{}],"../../node_modules/@babel/runtime/helpers/esm/inheritsLoose.js":[function(require,module,exports) {
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = _inheritsLoose;
-
-function _inheritsLoose(subClass, superClass) {
-  subClass.prototype = Object.create(superClass.prototype);
-  subClass.prototype.constructor = subClass;
-  subClass.__proto__ = superClass;
-}
-},{}],"../../node_modules/react-lifecycles-compat/react-lifecycles-compat.es.js":[function(require,module,exports) {
+},{"core-js/library/fn/parse-int":"../../node_modules/@babel/runtime-corejs2/node_modules/core-js/library/fn/parse-int.js"}],"../../node_modules/react-lifecycles-compat/react-lifecycles-compat.es.js":[function(require,module,exports) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -36105,17 +36124,19 @@ function polyfill(Component) {
 
   return Component;
 }
-},{}],"../../node_modules/react-transition-group/esm/utils/PropTypes.js":[function(require,module,exports) {
+},{}],"../../node_modules/react-transition-group/utils/PropTypes.js":[function(require,module,exports) {
 "use strict";
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
+exports.__esModule = true;
 exports.classNamesShape = exports.timeoutsShape = void 0;
 
 var _propTypes = _interopRequireDefault(require("prop-types"));
 
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : {
+    default: obj
+  };
+}
 
 var timeoutsShape = "development" !== 'production' ? _propTypes.default.oneOfType([_propTypes.default.number, _propTypes.default.shape({
   enter: _propTypes.default.number,
@@ -36136,17 +36157,11 @@ var classNamesShape = "development" !== 'production' ? _propTypes.default.oneOfT
   exitActive: _propTypes.default.string
 })]) : null;
 exports.classNamesShape = classNamesShape;
-},{"prop-types":"../../node_modules/prop-types/index.js"}],"../../node_modules/react-transition-group/esm/Transition.js":[function(require,module,exports) {
+},{"prop-types":"../../node_modules/prop-types/index.js"}],"../../node_modules/react-transition-group/Transition.js":[function(require,module,exports) {
 "use strict";
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
+exports.__esModule = true;
 exports.default = exports.EXITING = exports.ENTERED = exports.ENTERING = exports.EXITED = exports.UNMOUNTED = void 0;
-
-var _objectWithoutPropertiesLoose2 = _interopRequireDefault(require("@babel/runtime/helpers/esm/objectWithoutPropertiesLoose"));
-
-var _inheritsLoose2 = _interopRequireDefault(require("@babel/runtime/helpers/esm/inheritsLoose"));
 
 var PropTypes = _interopRequireWildcard(require("prop-types"));
 
@@ -36158,9 +36173,57 @@ var _reactLifecyclesCompat = require("react-lifecycles-compat");
 
 var _PropTypes = require("./utils/PropTypes");
 
-function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) { var desc = Object.defineProperty && Object.getOwnPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : {}; if (desc.get || desc.set) { Object.defineProperty(newObj, key, desc); } else { newObj[key] = obj[key]; } } } } newObj.default = obj; return newObj; } }
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : {
+    default: obj
+  };
+}
 
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+function _interopRequireWildcard(obj) {
+  if (obj && obj.__esModule) {
+    return obj;
+  } else {
+    var newObj = {};
+
+    if (obj != null) {
+      for (var key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+          var desc = Object.defineProperty && Object.getOwnPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : {};
+
+          if (desc.get || desc.set) {
+            Object.defineProperty(newObj, key, desc);
+          } else {
+            newObj[key] = obj[key];
+          }
+        }
+      }
+    }
+
+    newObj.default = obj;
+    return newObj;
+  }
+}
+
+function _objectWithoutPropertiesLoose(source, excluded) {
+  if (source == null) return {};
+  var target = {};
+  var sourceKeys = Object.keys(source);
+  var key, i;
+
+  for (i = 0; i < sourceKeys.length; i++) {
+    key = sourceKeys[i];
+    if (excluded.indexOf(key) >= 0) continue;
+    target[key] = source[key];
+  }
+
+  return target;
+}
+
+function _inheritsLoose(subClass, superClass) {
+  subClass.prototype = Object.create(superClass.prototype);
+  subClass.prototype.constructor = subClass;
+  subClass.__proto__ = superClass;
+}
 
 var UNMOUNTED = 'unmounted';
 exports.UNMOUNTED = UNMOUNTED;
@@ -36232,25 +36295,23 @@ var EXITING = 'exiting';
  * begins the "Enter" stage. During this stage, the component will shift from
  * its current transition state, to `'entering'` for the duration of the
  * transition and then to the `'entered'` stage once it's complete. Let's take
- * the following example:
+ * the following example (we'll use the
+ * [useState](https://reactjs.org/docs/hooks-reference.html#usestate) hook):
  *
  * ```jsx
- * state = { in: false };
- *
- * toggleEnterState = () => {
- *   this.setState({ in: true });
- * }
- *
- * render() {
+ * function App() {
+ *   const [inProp, setInProp] = useState(false);
  *   return (
- *     <>
- *       <Transition in={this.state.in} timeout={500}>
+ *     <div>
+ *       <Transition in={inProp} timeout={500}>
  *         {state => (
  *           // ...
  *         )}
  *       </Transition>
- *       <button onClick={this.toggleEnterState}>Click to Enter</button>
- *     </>
+ *       <button onClick={() => setInProp(true)}>
+ *         Click to Enter
+ *       </button>
+ *     </div>
  *   );
  * }
  * ```
@@ -36268,7 +36329,7 @@ exports.EXITING = EXITING;
 var Transition =
 /*#__PURE__*/
 function (_React$Component) {
-  (0, _inheritsLoose2.default)(Transition, _React$Component);
+  _inheritsLoose(Transition, _React$Component);
 
   function Transition(props, context) {
     var _this;
@@ -36536,7 +36597,8 @@ function (_React$Component) {
 
     var _this$props = this.props,
         children = _this$props.children,
-        childProps = (0, _objectWithoutPropertiesLoose2.default)(_this$props, ["children"]); // filter props for Transtition
+        childProps = _objectWithoutPropertiesLoose(_this$props, ["children"]); // filter props for Transtition
+
 
     delete childProps.in;
     delete childProps.mountOnEnter;
@@ -36653,8 +36715,7 @@ Transition.propTypes = "development" !== "production" ? {
    * @type {number | { enter?: number, exit?: number, appear?: number }}
    */
   timeout: function timeout(props) {
-    var pt = "development" !== "production" ? _PropTypes.timeoutsShape : {};
-    ;
+    var pt = _PropTypes.timeoutsShape;
     if (!props.addEndListener) pt = pt.isRequired;
 
     for (var _len = arguments.length, args = new Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
@@ -36750,7 +36811,7 @@ Transition.EXITING = 4;
 var _default = (0, _reactLifecyclesCompat.polyfill)(Transition);
 
 exports.default = _default;
-},{"@babel/runtime/helpers/esm/objectWithoutPropertiesLoose":"../../node_modules/@babel/runtime/helpers/esm/objectWithoutPropertiesLoose.js","@babel/runtime/helpers/esm/inheritsLoose":"../../node_modules/@babel/runtime/helpers/esm/inheritsLoose.js","prop-types":"../../node_modules/prop-types/index.js","react":"../../node_modules/react/index.js","react-dom":"../../node_modules/react-dom/index.js","react-lifecycles-compat":"../../node_modules/react-lifecycles-compat/react-lifecycles-compat.es.js","./utils/PropTypes":"../../node_modules/react-transition-group/esm/utils/PropTypes.js"}],"../../node_modules/react-bootstrap/es/Collapse.js":[function(require,module,exports) {
+},{"prop-types":"../../node_modules/prop-types/index.js","react":"../../node_modules/react/index.js","react-dom":"../../node_modules/react-dom/index.js","react-lifecycles-compat":"../../node_modules/react-lifecycles-compat/react-lifecycles-compat.es.js","./utils/PropTypes":"../../node_modules/react-transition-group/utils/PropTypes.js"}],"../../node_modules/react-bootstrap/es/Collapse.js":[function(require,module,exports) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -36990,7 +37051,7 @@ Collapse.propTypes = propTypes;
 Collapse.defaultProps = defaultProps;
 var _default = Collapse;
 exports.default = _default;
-},{"@babel/runtime-corejs2/helpers/esm/extends":"../../node_modules/@babel/runtime-corejs2/helpers/esm/extends.js","@babel/runtime-corejs2/helpers/esm/objectWithoutPropertiesLoose":"../../node_modules/@babel/runtime-corejs2/helpers/esm/objectWithoutPropertiesLoose.js","@babel/runtime-corejs2/helpers/esm/inheritsLoose":"../../node_modules/@babel/runtime-corejs2/helpers/esm/inheritsLoose.js","@babel/runtime-corejs2/core-js/parse-int":"../../node_modules/@babel/runtime-corejs2/core-js/parse-int.js","classnames":"../../node_modules/classnames/index.js","dom-helpers/style":"../../node_modules/dom-helpers/style/index.js","react":"../../node_modules/react/index.js","prop-types":"../../node_modules/prop-types/index.js","react-transition-group/Transition":"../../node_modules/react-transition-group/esm/Transition.js","./utils/capitalize":"../../node_modules/react-bootstrap/es/utils/capitalize.js","./utils/createChainedFunction":"../../node_modules/react-bootstrap/es/utils/createChainedFunction.js"}],"../../node_modules/dom-helpers/ownerDocument.js":[function(require,module,exports) {
+},{"@babel/runtime-corejs2/helpers/esm/extends":"../../node_modules/@babel/runtime-corejs2/helpers/esm/extends.js","@babel/runtime-corejs2/helpers/esm/objectWithoutPropertiesLoose":"../../node_modules/@babel/runtime-corejs2/helpers/esm/objectWithoutPropertiesLoose.js","@babel/runtime-corejs2/helpers/esm/inheritsLoose":"../../node_modules/@babel/runtime-corejs2/helpers/esm/inheritsLoose.js","@babel/runtime-corejs2/core-js/parse-int":"../../node_modules/@babel/runtime-corejs2/core-js/parse-int.js","classnames":"../../node_modules/classnames/index.js","dom-helpers/style":"../../node_modules/dom-helpers/style/index.js","react":"../../node_modules/react/index.js","prop-types":"../../node_modules/prop-types/index.js","react-transition-group/Transition":"../../node_modules/react-transition-group/Transition.js","./utils/capitalize":"../../node_modules/react-bootstrap/es/utils/capitalize.js","./utils/createChainedFunction":"../../node_modules/react-bootstrap/es/utils/createChainedFunction.js"}],"../../node_modules/dom-helpers/ownerDocument.js":[function(require,module,exports) {
 "use strict";
 
 exports.__esModule = true;
@@ -38727,7 +38788,7 @@ Fade.propTypes = propTypes;
 Fade.defaultProps = defaultProps;
 var _default = Fade;
 exports.default = _default;
-},{"@babel/runtime-corejs2/helpers/esm/extends":"../../node_modules/@babel/runtime-corejs2/helpers/esm/extends.js","@babel/runtime-corejs2/helpers/esm/objectWithoutPropertiesLoose":"../../node_modules/@babel/runtime-corejs2/helpers/esm/objectWithoutPropertiesLoose.js","@babel/runtime-corejs2/helpers/esm/inheritsLoose":"../../node_modules/@babel/runtime-corejs2/helpers/esm/inheritsLoose.js","classnames":"../../node_modules/classnames/index.js","react":"../../node_modules/react/index.js","prop-types":"../../node_modules/prop-types/index.js","react-transition-group/Transition":"../../node_modules/react-transition-group/esm/Transition.js"}],"../../node_modules/react-bootstrap/es/Form.js":[function(require,module,exports) {
+},{"@babel/runtime-corejs2/helpers/esm/extends":"../../node_modules/@babel/runtime-corejs2/helpers/esm/extends.js","@babel/runtime-corejs2/helpers/esm/objectWithoutPropertiesLoose":"../../node_modules/@babel/runtime-corejs2/helpers/esm/objectWithoutPropertiesLoose.js","@babel/runtime-corejs2/helpers/esm/inheritsLoose":"../../node_modules/@babel/runtime-corejs2/helpers/esm/inheritsLoose.js","classnames":"../../node_modules/classnames/index.js","react":"../../node_modules/react/index.js","prop-types":"../../node_modules/prop-types/index.js","react-transition-group/Transition":"../../node_modules/react-transition-group/Transition.js"}],"../../node_modules/react-bootstrap/es/Form.js":[function(require,module,exports) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -49443,7 +49504,7 @@ var Transaction = function Transaction(_ref) {
   }, _react.default.createElement("div", null, "From: ", "".concat(input.address.substring(0, 20), "..."), " | Balance: ", input.amount), recipients.map(function (recipient) {
     return _react.default.createElement("div", {
       key: recipient
-    }, "To: ", "".concat(recipient.substring(0.2), "..."), " | Sent:", outputMap[recipient]);
+    }, "To: ", "".concat(recipient.substring(0, 20), "..."), " | Sent:", outputMap[recipient]);
   }));
 };
 
@@ -49515,19 +49576,22 @@ function (_Component) {
   _createClass(Block, [{
     key: "render",
     value: function render() {
-      console.log("this.displayTransaction", this.displayTransaction);
+      console.log('this.displayTransaction', this.displayTransaction);
       var _this$props$block = this.props.block,
           timestamp = _this$props$block.timestamp,
-          hash = _this$props$block.hash;
+          hash = _this$props$block.hash,
+          lastHash = _this$props$block.lastHash;
       var hashDisplay = "".concat(hash.substring(0, 15), "...");
+      var lastHashDisplay = "".concat(lastHash.substring(0, 15), "...");
       return _react.default.createElement("div", {
         className: "Block"
-      }, _react.default.createElement("div", null, "Hash: ", hashDisplay), _react.default.createElement("div", null, "Timestamp: ", new Date(timestamp).toLocaleString()), this.displayTransaction);
+      }, _react.default.createElement("div", null, "Hash: ", hashDisplay), _react.default.createElement("div", null, "Last hash: ", lastHashDisplay), _react.default.createElement("div", null, "Timestamp: ", new Date(timestamp).toLocaleString()), this.displayTransaction);
     }
   }, {
     key: "displayTransaction",
     get: function get() {
-      var data = this.props.block.data;
+      var data = this.props.block.data; // JSON.stringify: Use object as string
+
       var stringifiedData = JSON.stringify(data);
       var dataDisplay = stringifiedData.length > 35 ? "".concat(stringifiedData.substring(0, 35), "...") : stringifiedData;
 
@@ -49568,6 +49632,8 @@ exports.default = void 0;
 
 var _react = _interopRequireWildcard(require("react"));
 
+var _reactBootstrap = require("react-bootstrap");
+
 var _reactRouterDom = require("react-router-dom");
 
 var _Block = _interopRequireDefault(require("./Block"));
@@ -49577,6 +49643,14 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) { var desc = Object.defineProperty && Object.getOwnPropertyDescriptor ? Object.getOwnPropertyDescriptor(obj, key) : {}; if (desc.get || desc.set) { Object.defineProperty(newObj, key, desc); } else { newObj[key] = obj[key]; } } } } newObj.default = obj; return newObj; } }
 
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
+
+function _toConsumableArray(arr) { return _arrayWithoutHoles(arr) || _iterableToArray(arr) || _nonIterableSpread(); }
+
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance"); }
+
+function _iterableToArray(iter) { if (Symbol.iterator in Object(iter) || Object.prototype.toString.call(iter) === "[object Arguments]") return Array.from(iter); }
+
+function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = new Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
@@ -49613,7 +49687,19 @@ function (_Component) {
     }
 
     return _possibleConstructorReturn(_this, (_temp = _this = _possibleConstructorReturn(this, (_getPrototypeOf2 = _getPrototypeOf(Blocks)).call.apply(_getPrototypeOf2, [this].concat(args))), _this.state = {
-      blocks: []
+      blocks: [],
+      paginatedId: 1,
+      blocksLength: 0
+    }, _this.fetchPaginatedBlocks = function (paginatedId) {
+      return function () {
+        fetch("".concat(document.location.origin, "/api/blocks/").concat(paginatedId)).then(function (response) {
+          return response.json();
+        }).then(function (json) {
+          return _this.setState({
+            blocks: json
+          });
+        });
+      };
     }, _temp));
   }
 
@@ -49622,21 +49708,33 @@ function (_Component) {
     value: function componentDidMount() {
       var _this2 = this;
 
-      fetch("".concat(document.location.origin, "/api/blocks")).then(function (response) {
+      fetch("".concat(document.location.origin, "/api/blocks/length")).then(function (response) {
         return response.json();
       }).then(function (json) {
         return _this2.setState({
-          blocks: json
+          blocksLength: json
         });
       });
+      this.fetchPaginatedBlocks(this.state.paginatedId)();
     }
   }, {
     key: "render",
     value: function render() {
+      var _this3 = this;
+
       console.log("this.state", this.state);
       return _react.default.createElement("div", null, _react.default.createElement("div", null, _react.default.createElement(_reactRouterDom.Link, {
         to: "/"
-      }, "Home")), _react.default.createElement("h3", null, "Blocks"), this.state.blocks.map(function (block) {
+      }, "Home")), _react.default.createElement("h3", null, "Blocks"), _react.default.createElement("div", null, _toConsumableArray(Array(Math.ceil(this.state.blocksLength / 5)).keys()).map(function (key) {
+        var paginatedId = key + 1;
+        return _react.default.createElement("span", {
+          key: key,
+          onClick: _this3.fetchPaginatedBlocks(paginatedId)
+        }, _react.default.createElement(_reactBootstrap.Button, {
+          bsSize: "small",
+          bsStyle: "danger"
+        }, paginatedId), " ");
+      })), this.state.blocks.map(function (block) {
         return _react.default.createElement(_Block.default, {
           key: block.hash,
           block: block
@@ -49650,7 +49748,7 @@ function (_Component) {
 
 var _default = Blocks;
 exports.default = _default;
-},{"react":"../../node_modules/react/index.js","react-router-dom":"../../node_modules/react-router-dom/es/index.js","./Block":"components/Block.js"}],"components/ConductTransaction.js":[function(require,module,exports) {
+},{"react":"../../node_modules/react/index.js","react-bootstrap":"../../node_modules/react-bootstrap/es/index.js","react-router-dom":"../../node_modules/react-router-dom/es/index.js","./Block":"components/Block.js"}],"components/ConductTransaction.js":[function(require,module,exports) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -49708,7 +49806,8 @@ function (_Component) {
 
     return _possibleConstructorReturn(_this, (_temp = _this = _possibleConstructorReturn(this, (_getPrototypeOf2 = _getPrototypeOf(ConductTransaction)).call.apply(_getPrototypeOf2, [this].concat(args))), _this.state = {
       recipient: "",
-      amount: 0
+      amount: 0,
+      knownAddresses: []
     }, _this.updateRecipient = function (event) {
       _this.setState({
         recipient: event.target.value
@@ -49741,13 +49840,30 @@ function (_Component) {
   }
 
   _createClass(ConductTransaction, [{
+    key: "componentDidMount",
+    value: function componentDidMount() {
+      var _this2 = this;
+
+      fetch("".concat(document.location.origin, "/api/known-addresses")).then(function (response) {
+        return response.json();
+      }).then(function (json) {
+        return _this2.setState({
+          knownAddresses: json
+        });
+      });
+    }
+  }, {
     key: "render",
     value: function render() {
       return _react.default.createElement("div", {
         className: "ConductTransaction"
       }, _react.default.createElement(_reactRouterDom.Link, {
         to: "/"
-      }, "Home"), _react.default.createElement("h3", null, "Conduct a Transaction"), _react.default.createElement(_reactBootstrap.FormGroup, null, _react.default.createElement(_reactBootstrap.FormControl, {
+      }, "Home"), _react.default.createElement("h3", null, "Conduct a Transaction"), _react.default.createElement("br", null), _react.default.createElement("h4", null, "Known Addresses"), this.state.knownAddresses.map(function (knownAddress) {
+        return _react.default.createElement("div", {
+          key: knownAddress
+        }, _react.default.createElement("div", null, knownAddress), _react.default.createElement("br", null));
+      }), _react.default.createElement("br", null), _react.default.createElement(_reactBootstrap.FormGroup, null, _react.default.createElement(_reactBootstrap.FormControl, {
         input: "text",
         placeholder: "recipient",
         value: this.state.recipient,
@@ -49832,6 +49948,7 @@ function (_Component) {
     return _possibleConstructorReturn(_this, (_temp = _this = _possibleConstructorReturn(this, (_getPrototypeOf2 = _getPrototypeOf(TransactionPool)).call.apply(_getPrototypeOf2, [this].concat(args))), _this.state = {
       transactionPoolMap: {}
     }, _this.fetchTransactionPoolMap = function () {
+      // document.location.origin: localhost:3000
       fetch("".concat(document.location.origin, "/api/transaction-pool-map")).then(function (response) {
         return response.json();
       }).then(function (json) {
@@ -49842,11 +49959,11 @@ function (_Component) {
     }, _this.fetchMineTransactions = function () {
       fetch("".concat(document.location.origin, "/api/mine-transactions")).then(function (response) {
         if (response.status === 200) {
-          alert("success");
+          alert('success');
 
-          _history.default.push("/blocks");
+          _history.default.push('/blocks');
         } else {
-          alert("The mine-transactions block request did not complete.");
+          alert('The mine-transactions block request did not complete.');
         }
       });
     }, _temp));
@@ -49908,7 +50025,7 @@ function getBundleURL() {
   try {
     throw new Error();
   } catch (err) {
-    var matches = ('' + err.stack).match(/(https?|file|ftp):\/\/[^)\n]+/g);
+    var matches = ('' + err.stack).match(/(https?|file|ftp|chrome-extension|moz-extension):\/\/[^)\n]+/g);
 
     if (matches) {
       return getBaseURL(matches[0]);
@@ -49919,7 +50036,7 @@ function getBundleURL() {
 }
 
 function getBaseURL(url) {
-  return ('' + url).replace(/^((?:https?|file|ftp):\/\/.+)\/[^/]+$/, '$1') + '/';
+  return ('' + url).replace(/^((?:https?|file|ftp|chrome-extension|moz-extension):\/\/.+)\/[^/]+$/, '$1') + '/';
 }
 
 exports.getBundleURL = getBundleURLCached;
@@ -49989,7 +50106,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 (0, _reactDom.render)(_react.default.createElement(_reactRouterDom.Router, {
   history: _history.default
-}, _react.default.createElement(_reactRouterDom.Switch, null, "/* exact\u304C\u7121\u3044\u3068\u3001\u4ED6\u306E\u30A2\u30C9\u30EC\u30B9\u3067\u3082App\u304C\u8868\u793A\u3055\u308C\u308B\u3002*/", _react.default.createElement(_reactRouterDom.Route, {
+}, _react.default.createElement(_reactRouterDom.Switch, null, _react.default.createElement(_reactRouterDom.Route, {
   exact: true,
   path: "/",
   component: _App.default
@@ -50002,7 +50119,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 }), _react.default.createElement(_reactRouterDom.Route, {
   path: "/transaction-pool",
   component: _TransactionPool.default
-}))), document.getElementById("root"));
+}))), document.getElementById('root'));
 },{"react":"../../node_modules/react/index.js","react-dom":"../../node_modules/react-dom/index.js","react-router-dom":"../../node_modules/react-router-dom/es/index.js","./history":"history.js","./components/App":"components/App.js","./components/Blocks":"components/Blocks.js","./components/ConductTransaction":"components/ConductTransaction.js","./components/TransactionPool":"components/TransactionPool.js","./index.css":"index.css"}],"../../node_modules/parcel-bundler/src/builtins/hmr-runtime.js":[function(require,module,exports) {
 var global = arguments[3];
 var OVERLAY_ID = '__parcel__error__overlay__';
@@ -50025,26 +50142,46 @@ function Module(moduleName) {
 }
 
 module.bundle.Module = Module;
+var checkedAssets, assetsToAccept;
 var parent = module.bundle.parent;
 
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "57253" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "61288" + '/');
 
   ws.onmessage = function (event) {
+    checkedAssets = {};
+    assetsToAccept = [];
     var data = JSON.parse(event.data);
 
     if (data.type === 'update') {
-      console.clear();
-      data.assets.forEach(function (asset) {
-        hmrApply(global.parcelRequire, asset);
-      });
+      var handled = false;
       data.assets.forEach(function (asset) {
         if (!asset.isNew) {
-          hmrAccept(global.parcelRequire, asset.id);
+          var didAccept = hmrAcceptCheck(global.parcelRequire, asset.id);
+
+          if (didAccept) {
+            handled = true;
+          }
         }
+      }); // Enable HMR for CSS by default.
+
+      handled = handled || data.assets.every(function (asset) {
+        return asset.type === 'css' && asset.generated.js;
       });
+
+      if (handled) {
+        console.clear();
+        data.assets.forEach(function (asset) {
+          hmrApply(global.parcelRequire, asset);
+        });
+        assetsToAccept.forEach(function (v) {
+          hmrAcceptRun(v[0], v[1]);
+        });
+      } else {
+        window.location.reload();
+      }
     }
 
     if (data.type === 'reload') {
@@ -50132,7 +50269,7 @@ function hmrApply(bundle, asset) {
   }
 }
 
-function hmrAccept(bundle, id) {
+function hmrAcceptCheck(bundle, id) {
   var modules = bundle.modules;
 
   if (!modules) {
@@ -50140,9 +50277,27 @@ function hmrAccept(bundle, id) {
   }
 
   if (!modules[id] && bundle.parent) {
-    return hmrAccept(bundle.parent, id);
+    return hmrAcceptCheck(bundle.parent, id);
   }
 
+  if (checkedAssets[id]) {
+    return;
+  }
+
+  checkedAssets[id] = true;
+  var cached = bundle.cache[id];
+  assetsToAccept.push([bundle, id]);
+
+  if (cached && cached.hot && cached.hot._acceptCallbacks.length) {
+    return true;
+  }
+
+  return getParents(global.parcelRequire, id).some(function (id) {
+    return hmrAcceptCheck(global.parcelRequire, id);
+  });
+}
+
+function hmrAcceptRun(bundle, id) {
   var cached = bundle.cache[id];
   bundle.hotData = {};
 
@@ -50167,10 +50322,6 @@ function hmrAccept(bundle, id) {
 
     return true;
   }
-
-  return getParents(global.parcelRequire, id).some(function (id) {
-    return hmrAccept(global.parcelRequire, id);
-  });
 }
 },{}]},{},["../../node_modules/parcel-bundler/src/builtins/hmr-runtime.js","index.js"], null)
-//# sourceMappingURL=/src.e31bb0bc.map
+//# sourceMappingURL=/src.e31bb0bc.js.map

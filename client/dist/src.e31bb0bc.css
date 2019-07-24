@@ -23,6 +23,16 @@ body {
   width: 500px;
 }
 
+.WalletInfo h4 {
+  margin-bottom: 0;
+}
+
+.WalletInfo h5 {
+  color: silver;
+  margin-top: 0;
+
+}
+
 .Block {
   border: 1px solid #fff;
   padding: 5%;
@@ -43,3 +53,5 @@ a:hover {
   color: #e66;
   text-decoration: underline;
 }
+
+/*# sourceMappingURL=/src.e31bb0bc.css.map */

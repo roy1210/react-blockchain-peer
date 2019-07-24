@@ -1,9 +1,11 @@
-const redis = require("redis");
+// Code if use redis instead of PubNub
+
+const redis = require('redis');
 
 const CHANNELS = {
-  TEST: "TEST",
-  BLOCKCHAIN: "BLOCKCHAIN",
-  TRANSACTION: "TRANSACTION"
+  TEST: 'TEST',
+  BLOCKCHAIN: 'BLOCKCHAIN',
+  TRANSACTION: 'TRANSACTION'
 };
 
 class PubSub {
@@ -16,7 +18,7 @@ class PubSub {
 
     this.subscribeToChannels();
 
-    this.subscriber.on("message", (channel, message) =>
+    this.subscriber.on('message', (channel, message) =>
       this.handleMessage(channel, message)
     );
   }
@@ -41,6 +43,7 @@ class PubSub {
         return;
     }
   }
+
   subscribeToChannels() {
     Object.values(CHANNELS).forEach(channel => {
       this.subscriber.subscribe(channel);
@@ -58,7 +61,7 @@ class PubSub {
   broadcastChain() {
     this.publish({
       channel: CHANNELS.BLOCKCHAIN,
-      // only can publish the string proparty
+      // only can publish the string property
       message: JSON.stringify(this.blockchain.chain)
     });
   }
